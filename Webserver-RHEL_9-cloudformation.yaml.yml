@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:  # Resources to be creaated on AWS
+  MySecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupName: MySecurityGroup
+      GroupDescription: Allow inbound access to EC2 instances
+      VpcId: < vpc_id >  # replace with your vpc id
+      SecurityGroupIngress:   # you can add any specific port here as per your need
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+  MyLoadBalancer:   # Configutarion for the loadbalancer
+    Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    Properties:
+      Name: MyLoadBalancer
+      Scheme: internet-facing
+      Subnets:
+        - < Subnet_id-1 >  # enter subnet_id-1 here
+        - < Subnet_id-2 >  # enter subnet_id-2 here
+      SecurityGroups:
+        - !Ref MySecurityGroup
+      Type: application
+      IpAddressType: ipv4
+      Tags:
+        - Key: Name
+          Value: MyLoadBalancer
+  MyTargetGroup:  # configuration for the Target group
+    Type: "AWS::ElasticLoadBalancingV2::TargetGroup"
+    Properties:
+      Name: MyTargetGroup
+      Port: 80
+      Protocol: HTTP
+      VpcId: < vpc_id >  # replace with your vpc id
+      TargetType: instance
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+  MyLaunchConfiguration: # Configuration of the intaces to be created
+    Type: "AWS::AutoScaling::LaunchConfiguration"
+    Properties:
+      LaunchConfigurationName: MyLaunchConfiguration1
+      ImageId: < image_id > # Replace with the appropriate OS AMI ID
+      InstanceType: < inatsance_type > # Replace with the desired instance type
+      KeyName: < key_name > # Replace with the desired 
+      SecurityGroups:
+        - !Ref MySecurityGroup
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          # following commands are to install and configure the web server on RHEL 9
+          # Example: Install Apache HTTP Server
+          yum update -y
+          yum install -y httpd
+          systemctl enable httpd
+          systemctl start httpd
+          # Adding index.html to be hosted on internet
+          echo "This site is Hosted using Cloud Shell with a highly available and scalable infrastructure" > /var/www/html/index.html
+  MyAutoScalingGroup:
+    Type: "AWS::AutoScaling::AutoScalingGroup"
+    Properties:
+      AutoScalingGroupName: MyAutoScalingGroup
+      LaunchConfigurationName: !Ref MyLaunchConfiguration
+      MinSize: 3
+      MaxSize: 6
+      DesiredCapacity: 3
+      VPCZoneIdentifier:
+        - < Subnet_id-1 >  # enter subnet_id-1 here
+        - < Subnet_id-2 >  # enter subnet_id-2 here
+      TargetGroupARNs:
+        - !Ref MyTargetGroup
+      Tags:
+        - Key: Name
+          Value: MyAutoScalingGroup
+          PropagateAtLaunch: true
+      HealthCheckGracePeriod: 300
+      TerminationPolicies:
+        - OldestInstance
+      AvailabilityZones:
+        - "ap-south-1a"  # Replace with the desired Availiblity zone-1 
+        - "ap-south-1b"  # Replace with the desired Availiblity zone-2
+  MyLoadBalancerListener:
+    Type: "AWS::ElasticLoadBalancingV2::Listener"
+    Properties:
+      LoadBalancerArn: !Ref MyLoadBalancer
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref MyTargetGroup
